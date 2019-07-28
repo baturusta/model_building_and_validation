@@ -1,0 +1,341 @@
+# Load project data and libraries
+setwd("C:/Users/08892/Desktop/Model Building and Validation/Project")
+library(readxl)
+library(tidyverse)
+library(forcats)
+library(missForest)
+library(gbm)
+library(corrplot)
+library(caret)
+library(leaps)
+library(FactoMineR)
+library(factoextra)
+library(randomForest)
+library(e1071)
+library(dummies)
+library(dplyr)
+library(tidyr)
+train_data<-read.csv("Train_New_Data.csv", sep=";")
+test_data<-read.csv("Test_New_Data.csv", sep=";")
+
+#Exploration on Numerical Variables
+num_values <- select_if(train_data, is.numeric)
+numericVarNames <- names(num_values)
+
+summary(num_values)
+
+# There are not many NaN's, we will fill them with an automatized function
+contains_na<-names(num_values)[sapply(num_values, anyNA)]
+
+# Nulls in Garage year built column probably represents houses with no garage
+subset(num_values, is.na(num_values$GarageYrBlt))[c("GarageCars", "GarageYrBlt", "GarageArea")]
+# Our suspicions were correct, we should fill it with zeroes for now
+num_values <-
+  num_values %>% mutate(GarageYrBlt=replace_na(GarageYrBlt, 0))
+# Apply different functions to fill Na's
+# https://www.analyticsvidhya.com/blog/2016/03/tutorial-powerful-packages-imputing-missing-values
+# Fill with Amelia package:
+# Amelia package assumes multivariate normal distribution, let's check for it before applying
+# https://cran.r-project.org/web/packages/MVN/vignettes/MVN.pdf
+library(MVN)
+tests <- c("hz", "royston", "dh")
+for(test in tests){
+  print(paste("Test: ",test))
+  print(mvn(num_values, mvnTest=test)$multivariateNormality$MVN)
+}
+# There is no MVN, therefore we will use missforest package to fill the missing values
+# Fill with missForest
+# https://cran.r-project.org/web/packages/missForest/missForest.pdf
+library(missForest)
+num_values <- missForest(num_values, maxiter=10, ntree=200)$ximp
+# The few nulls among the numerical values are replaced with missForest package, we can proceed to EDA
+# Detailed summary
+options(scipen=999)
+num_describe<-mvn(num_values)$Descriptives
+# We see some heavily skewed variables and high kurtosis. A lot of features have high number of 0's and some high values
+# feeding the data into a model this way will cause it to perform poorly, a scaling seems to be in order
+# as both MVN test and descriptive statistics point out, the data is not normally distributed at all, 
+# therefore it might be better to scale with something other than standard scaling, or maybe standard scaling after a log transformation 
+# But before that, we should proceed to see relationships between variables
+
+# Correlation plot
+cor <- cor(num_values,use="pairwise.complete.obs")
+cor_sorted <- as.matrix(sort(cor[,'SalePrice'], decreasing = TRUE))
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.30)))
+cor <- cor[CorHigh, CorHigh]
+windows()
+corrplot.mixed(cor, tl.col="black", tl.pos = "lt")
+
+# some of the variables are heavily correlated, we will either eliminate some of them, transform them or combine them into new variables.
+# Here is a breakdown:
+# - Overall Quality is highly and positively correlated with sales price. This could introduce a bias
+# - GarageArea and GarageCars have a correlation of almost one, they represent pretty much the same thing, but keeping the garage area variable 
+# is arguably better
+# - Above ground living area (GrLivArea) is related to number of total rooms (TotRmsAbvGrd) and 2nd floor square feet (X2ndFlrSF), the correlation
+# is higher with 2nd floor area
+# - Another high correlation is found between total basement area (TotalBsmtSF) and first floor area (X1stFlrSF)
+
+
+hist(num_values$YrSold-num_values$YearRemodAdd)
+# Introduce renovation variable that indicates how long ago the house was remodeled
+num_values<-num_values %>%
+  mutate(renovation = ifelse(YearBuilt!=YearRemodAdd, (YrSold-YearRemodAdd), -1)) %>%
+  mutate(renovation = case_when(renovation==-1~0,
+                                             renovation<10~3,
+                                             renovation<=40~2,
+                                             renovation>40~1)) %>%
+  select(-YearRemodAdd)
+
+# Renovation:
+# 0 : not renovated
+# 1 : renovated over 40 years ago
+# 2 : renovated between 40 years and 10 years ago
+# 3 : renovated less than 10 years ago
+
+# Create total bath variable
+num_values$bath <- num_values$FullBath + (0.5 * num_values$HalfBath) + num_values$BsmtFullBath + (0.5 * num_values$BsmtHalfBath)
+
+# Drop 
+num_values <- select(num_values, -c(GarageCars, OverallQual, GarageYrBlt, HalfBath, BsmtFullBath, FullBath, BsmtHalfBath))
+
+# Explore categorical variables
+cat_vars <- select_if(train_data, is.factor)
+
+summary(cat_vars)
+
+# Convert NaN's in categorical variables into "None"
+cat_vars <- cat_vars %>% 
+  mutate_if(is.factor, fct_explicit_na, na_level = 'None')
+
+cat_vars <- cat_vars %>% mutate(Lot_Shape = case_when(LotShape == "IR3" ~ 1,
+                                                LotShape == "IR2" ~ 2,
+                                                LotShape == "IR1" ~ 3,
+                                                LotShape == "Reg" ~ 4))
+
+cat_vars <- cat_vars %>% mutate(Land_Contour = case_when(LandContour == "Low" ~ 1,
+                                                   LandContour == "HLS" ~ 2,
+                                                   LandContour == "Bnk" ~ 3,
+                                                   LandContour == "Lvl" ~ 4))
+
+cat_vars <- cat_vars %>% mutate(Utility = case_when(Utilities == "ELO" ~ 1,
+                                              Utilities == "NoSeWa" ~ 2,
+                                              Utilities == "NoSewr" ~ 3,
+                                              Utilities == "AllPub" ~ 4))
+
+cat_vars <- cat_vars %>% mutate(Land_Slope = case_when(LandSlope == "Sev" ~ 1,
+                                                 LandSlope == "Mod" ~ 2,
+                                                 LandSlope == "Gtl" ~ 3))
+
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Exter_Qual = case_when(
+      ExterQual == "Po" ~ 1,
+      ExterQual == "Fa" ~ 2,
+      ExterQual == "TA" ~ 3,
+      ExterQual == "Gd" ~ 4,
+      ExterQual == "Ex" ~ 5
+    )
+  )
+
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Exter_Cond = case_when(
+      ExterCond == "Po" ~ 1,
+      ExterCond == "Fa" ~ 2,
+      ExterCond == "TA" ~ 3,
+      ExterCond == "Gd" ~ 4,
+      ExterCond == "Ex" ~ 5
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Bsmt_Qual = case_when(
+      BsmtQual == "None" ~ 0,
+      BsmtQual == "Po" ~ 1,
+      BsmtQual == "Fa" ~ 2,
+      BsmtQual == "TA" ~ 3,
+      BsmtQual == "Gd" ~ 4,
+      BsmtQual == "Ex" ~ 5
+    )
+  )
+
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Bsmt_Cond = case_when(
+      BsmtCond == "None" ~ 0,
+      BsmtCond == "Po" ~ 1,
+      BsmtCond == "Fa" ~ 2,
+      BsmtCond == "TA" ~ 3,
+      BsmtCond == "Gd" ~ 4,
+      BsmtCond == "Ex" ~ 5
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Bsmt_Exposure = case_when(
+      BsmtExposure == "None" ~ 0,
+      BsmtExposure == "No" ~ 1,
+      BsmtExposure == "Mn" ~ 2,
+      BsmtExposure == "Av" ~ 3,
+      BsmtExposure == "Gd" ~ 4
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Bsmt_FinType1 = case_when(
+      BsmtFinType1 == "None" ~ 0,
+      BsmtFinType1 == "Unf" ~ 1,
+      BsmtFinType1 == "LwQ" ~ 2,
+      BsmtFinType1 == "Rec" ~ 3,
+      BsmtFinType1 == "BLQ" ~ 4,
+      BsmtFinType1 == "ALQ" ~ 5,
+      BsmtFinType1 == "GLQ" ~ 6
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Bsmt_FinType2 = case_when(
+      BsmtFinType2 == "None" ~ 0,
+      BsmtFinType2 == "Unf" ~ 1,
+      BsmtFinType2 == "LwQ" ~ 2,
+      BsmtFinType2 == "Rec" ~ 3,
+      BsmtFinType2 == "BLQ" ~ 4,
+      BsmtFinType2 == "ALQ" ~ 5,
+      BsmtFinType2 == "GLQ" ~ 6
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Heating_QC = case_when(
+      HeatingQC == "None" ~ 0,
+      HeatingQC == "Po" ~ 1,
+      HeatingQC == "Fa" ~ 2,
+      HeatingQC == "TA" ~ 3,
+      HeatingQC == "Gd" ~ 4,
+      HeatingQC == "Ex" ~ 5
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Central_Air = case_when(
+      CentralAir == "N" ~ 0,
+      CentralAir == "Y" ~ 1
+    )
+  )
+
+
+train <-
+  train %>% mutate(
+    Kitchen_Qual = case_when(
+      KitchenQual == "None" ~ 0,
+      KitchenQual == "Po" ~ 1,
+      KitchenQual == "Fa" ~ 2,
+      KitchenQual == "TA" ~ 3,
+      KitchenQual == "Gd" ~ 4,
+      KitchenQual == "Ex" ~ 5
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Func = case_when(
+      Functional == "Sal" ~ 0,
+      Functional == "Sev" ~ 1,
+      Functional == "Maj2" ~ 2,
+      Functional == "Maj1" ~ 3,
+      Functional == "Mod" ~ 4,
+      Functional == "Min2" ~ 5,
+      Functional == "Min1" ~ 6,
+      Functional == "Typ" ~ 7,
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Fireplace_Qu = case_when(
+      FireplaceQu == "None" ~ 0,
+      FireplaceQu == "Po" ~ 1,
+      FireplaceQu == "Fa" ~ 2,
+      FireplaceQu == "TA" ~ 3,
+      FireplaceQu == "Gd" ~ 4,
+      FireplaceQu == "Ex" ~ 5
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Garage_Finish = case_when(
+      GarageFinish == "None" ~ 0,
+      GarageFinish == "Unf" ~ 1,
+      GarageFinish == "RFn" ~ 2,
+      GarageFinish == "Fin" ~ 3)
+  )
+
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Garage_Quality = case_when(
+      GarageQual == "None" ~ 0,
+      GarageQual == "Po" ~ 1,
+      GarageQual == "Fa" ~ 2,
+      GarageQual == "TA" ~ 3,
+      GarageQual == "Gd" ~ 4,
+      GarageQual == "Ex" ~ 5
+    )
+  )
+
+train <-
+  train %>% mutate(
+    Garage_Cond = case_when(
+      GarageCond == "None" ~ 0,
+      GarageCond == "Po" ~ 1,
+      GarageCond == "Fa" ~ 2,
+      GarageCond == "TA" ~ 3,
+      GarageCond == "Gd" ~ 4,
+      GarageCond == "Ex" ~ 5
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Paved_Drive = case_when(
+      PavedDrive == "N" ~ 0,
+      PavedDrive == "P" ~ 1,
+      PavedDrive == "Y" ~ 2)
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Pool_Qual = case_when(
+      PoolQC == "None" ~ 0,
+      PoolQC == "Po" ~ 1,
+      PoolQC == "Fa" ~ 2,
+      PoolQC == "TA" ~ 3,
+      PoolQC == "Gd" ~ 4,
+      PoolQC == "Ex" ~ 5
+    )
+  )
+
+cat_vars <-
+  cat_vars %>% mutate(
+    Fence_ = case_when(
+      Fence == "None" ~ 0,
+      Fence == "MnWw" ~ 1,
+      Fence == "GdWo" ~ 2,
+      Fence == "MnPrv" ~ 3,
+      Fence == "GdPrv" ~ 4)
+  )
+# NOTLAR:
+# Evin yaşı ve fiyatlandırması ile ilgili makaleler:
+# https://www.sciencedirect.com/science/article/pii/S1051137712000228
+# https://www.sciencedirect.com/science/article/pii/S0166046216301107
+# https://www.apartmenttherapy.com/what-is-considered-an-older-home-247609
