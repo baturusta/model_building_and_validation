@@ -97,7 +97,42 @@ num_values$bath <- num_values$FullBath + (0.5 * num_values$HalfBath) + num_value
 
 # Drop 
 num_values <- select(num_values, -c(GarageCars, OverallQual, GarageYrBlt, HalfBath, BsmtFullBath, FullBath, BsmtHalfBath))
-
+num_values <- num_values %>% select(-Id)
+# Categorised sales variable
+summary(num_values$SalePrice)
+summary(log10(num_values$SalePrice)) #Scale based on log
+Salesrange<-log10(num_values$SalePrice)
+seq(min(Salesrange), max(Salesrange), length.out = 15)
+binneddata<-mutate(num_values, binned=Salesrange-Salesrange %% 0.095)$binned
+logrange<-sort(unique(binneddata))
+reals<-10^logrange
+# Range
+range<-case_when(binneddata==logrange[1]~"category1",
+                 binneddata==logrange[2]~"category2",
+                 binneddata==logrange[3]~"category3",
+                 binneddata==logrange[4]~"category4",
+                 binneddata==logrange[5]~"category5",
+                 binneddata==logrange[6]~"category6",
+                 binneddata==logrange[7]~"category7",
+                 binneddata==logrange[8]~"category8",
+                 binneddata==logrange[9]~"category9",
+                 binneddata==logrange[10]~"category10",
+                 binneddata==logrange[11]~"category11",
+                 binneddata==logrange[12]~"category12",
+                 binneddata==logrange[13]~"category13",
+                 binneddata==logrange[14]~"category14",
+                 binneddata==logrange[15]~"category15",
+                 #binneddata==logrange[16]~"category16",
+                 #binneddata==logrange[17]~"category17",
+                 #binneddata==logrange[18]~"category18",
+                 #binneddata==logrange[19]~"category19",
+                 #binneddata==logrange[20]~"category20"
+                 )
+# Create 15 categories out of the salesprice range
+train_data$SalesRange <- range
+train_data %>% select(SalesRange) %>% group_by(SalesRange) %>% summarize(n()) %>%
+  ggplot(.) +
+  geom_bar(aes(y=`n()`, x=SalesRange), stat='identity')
 # Explore categorical variables
 cat_vars <- select_if(train_data, is.factor)
 
@@ -110,21 +145,25 @@ cat_vars <- cat_vars %>%
 cat_vars <- cat_vars %>% mutate(Lot_Shape = case_when(LotShape == "IR3" ~ 1,
                                                 LotShape == "IR2" ~ 2,
                                                 LotShape == "IR1" ~ 3,
-                                                LotShape == "Reg" ~ 4))
+                                                LotShape == "Reg" ~ 4)) %>%
+                                  select(-LotShape)
 
 cat_vars <- cat_vars %>% mutate(Land_Contour = case_when(LandContour == "Low" ~ 1,
                                                    LandContour == "HLS" ~ 2,
                                                    LandContour == "Bnk" ~ 3,
-                                                   LandContour == "Lvl" ~ 4))
+                                                   LandContour == "Lvl" ~ 4)) %>%
+  select(-LandContour)
 
 cat_vars <- cat_vars %>% mutate(Utility = case_when(Utilities == "ELO" ~ 1,
                                               Utilities == "NoSeWa" ~ 2,
                                               Utilities == "NoSewr" ~ 3,
-                                              Utilities == "AllPub" ~ 4))
+                                              Utilities == "AllPub" ~ 4)) %>%
+  select(-Utilities)
 
 cat_vars <- cat_vars %>% mutate(Land_Slope = case_when(LandSlope == "Sev" ~ 1,
                                                  LandSlope == "Mod" ~ 2,
-                                                 LandSlope == "Gtl" ~ 3))
+                                                 LandSlope == "Gtl" ~ 3)) %>%
+  select(-LandSlope)
 
 
 cat_vars <-
@@ -136,7 +175,8 @@ cat_vars <-
       ExterQual == "Gd" ~ 4,
       ExterQual == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-ExterQual)
 
 
 cat_vars <-
@@ -148,7 +188,8 @@ cat_vars <-
       ExterCond == "Gd" ~ 4,
       ExterCond == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-ExterCond)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -160,7 +201,8 @@ cat_vars <-
       BsmtQual == "Gd" ~ 4,
       BsmtQual == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-BsmtQual)
 
 
 cat_vars <-
@@ -173,7 +215,8 @@ cat_vars <-
       BsmtCond == "Gd" ~ 4,
       BsmtCond == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-BsmtCond)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -184,7 +227,8 @@ cat_vars <-
       BsmtExposure == "Av" ~ 3,
       BsmtExposure == "Gd" ~ 4
     )
-  )
+  ) %>%
+  select(-BsmtExposure)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -197,7 +241,8 @@ cat_vars <-
       BsmtFinType1 == "ALQ" ~ 5,
       BsmtFinType1 == "GLQ" ~ 6
     )
-  )
+  ) %>%
+  select(-BsmtFinType1)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -210,7 +255,8 @@ cat_vars <-
       BsmtFinType2 == "ALQ" ~ 5,
       BsmtFinType2 == "GLQ" ~ 6
     )
-  )
+  ) %>%
+  select(-BsmtFinType2)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -222,7 +268,8 @@ cat_vars <-
       HeatingQC == "Gd" ~ 4,
       HeatingQC == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-HeatingQC)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -230,11 +277,12 @@ cat_vars <-
       CentralAir == "N" ~ 0,
       CentralAir == "Y" ~ 1
     )
-  )
+  ) %>%
+  select(-CentralAir)
 
 
-train <-
-  train %>% mutate(
+cat_vars <-
+  cat_vars %>% mutate(
     Kitchen_Qual = case_when(
       KitchenQual == "None" ~ 0,
       KitchenQual == "Po" ~ 1,
@@ -243,7 +291,8 @@ train <-
       KitchenQual == "Gd" ~ 4,
       KitchenQual == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-KitchenQual)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -257,7 +306,8 @@ cat_vars <-
       Functional == "Min1" ~ 6,
       Functional == "Typ" ~ 7,
     )
-  )
+  ) %>%
+  select(-Functional)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -269,7 +319,8 @@ cat_vars <-
       FireplaceQu == "Gd" ~ 4,
       FireplaceQu == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-FireplaceQu)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -278,7 +329,8 @@ cat_vars <-
       GarageFinish == "Unf" ~ 1,
       GarageFinish == "RFn" ~ 2,
       GarageFinish == "Fin" ~ 3)
-  )
+  ) %>%
+  select(-GarageFinish)
 
 
 cat_vars <-
@@ -291,10 +343,11 @@ cat_vars <-
       GarageQual == "Gd" ~ 4,
       GarageQual == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-GarageQual)
 
-train <-
-  train %>% mutate(
+cat_vars <-
+  cat_vars %>% mutate(
     Garage_Cond = case_when(
       GarageCond == "None" ~ 0,
       GarageCond == "Po" ~ 1,
@@ -303,7 +356,8 @@ train <-
       GarageCond == "Gd" ~ 4,
       GarageCond == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-GarageCond)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -311,7 +365,8 @@ cat_vars <-
       PavedDrive == "N" ~ 0,
       PavedDrive == "P" ~ 1,
       PavedDrive == "Y" ~ 2)
-  )
+  ) %>%
+  select(-PavedDrive)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -323,7 +378,8 @@ cat_vars <-
       PoolQC == "Gd" ~ 4,
       PoolQC == "Ex" ~ 5
     )
-  )
+  ) %>%
+  select(-PoolQC)
 
 cat_vars <-
   cat_vars %>% mutate(
@@ -333,8 +389,362 @@ cat_vars <-
       Fence == "GdWo" ~ 2,
       Fence == "MnPrv" ~ 3,
       Fence == "GdPrv" ~ 4)
-  )
+  ) %>%
+  select(-Fence)
+
+# Remove near zero variance categorics
+zerovars<-(nearZeroVar(select_if(cat_vars, is.factor), freqCut=95/5, names=T))
+cat_vars <- cat_vars %>% select(-zerovars)
+
+# One-hot encode the rest
+encoded_cats <- as.data.frame(model.matrix(~.+0,data = select_if(cat_vars, is.factor)))
+
+# Combine for classification
+class_df <- cbind(select_if(cat_vars, is.numeric), num_values, encoded_cats,train_data$SalesRange)
+class_df <- class_df %>% rename(SalesRange=`train_data$SalesRange`)
+colnames(class_df)
+# Introduce missing columns
+#
+
+# Do benchmark classification with svc
+library(e1071)
+class_df<-class_df%>%select(-SalePrice)
+svmfit<-svm(SalesRange~., data=class_df, kernel="linear", cost=0.1, scale=FALSE)
+svmfit$call
+
+# rf
+library(randomForest)
+rf.test<-randomForest(SalesRange~., data=class_df, ntree=25, mrty=10)
+
+# PREP TEST DATAFRAME
+# Numerical columns
+test_numerical<-select_if(test_data, is.numeric)
+# Categorical columns
+test_categorical<-select_if(test_data, is.factor)
+# Transformation on numericals
+test_numerical <-
+  test_numerical %>% mutate(GarageYrBlt=replace_na(GarageYrBlt, 0))
+test_numerical <- missForest(test_numerical, maxiter=10, ntree=200)$ximp
+test_numerical<-test_numerical %>%
+  mutate(renovation = ifelse(YearBuilt!=YearRemodAdd, (YrSold-YearRemodAdd), -1)) %>%
+  mutate(renovation = case_when(renovation==-1~0,
+                                renovation<10~3,
+                                renovation<=40~2,
+                                renovation>40~1)) %>%
+  select(-YearRemodAdd)
+test_numerical$bath <- test_numerical$FullBath + (0.5 * test_numerical$HalfBath) + test_numerical$BsmtFullBath + (0.5 * test_numerical$BsmtHalfBath)
+test_numerical <- select(test_numerical, -c(GarageCars, OverallQual, GarageYrBlt, HalfBath, BsmtFullBath, FullBath, BsmtHalfBath))
+test_numerical <- test_numerical %>% select(-Id)
+
+log_testSales <- log10(test_numerical$SalePrice)
+test_targetbins <- mutate(test_numerical, binned=log_testSales-log_testSales %% 0.095)$binned
+test_range<-case_when(test_targetbins==logrange[1]~"category1",
+                 test_targetbins==logrange[2]~"category2",
+                 test_targetbins==logrange[3]~"category3",
+                 test_targetbins==logrange[4]~"category4",
+                 test_targetbins==logrange[5]~"category5",
+                 test_targetbins==logrange[6]~"category6",
+                 test_targetbins==logrange[7]~"category7",
+                 test_targetbins==logrange[8]~"category8",
+                 test_targetbins==logrange[9]~"category9",
+                 test_targetbins==logrange[10]~"category10",
+                 test_targetbins==logrange[11]~"category11",
+                 test_targetbins==logrange[12]~"category12",
+                 test_targetbins==logrange[13]~"category13",
+                 test_targetbins==logrange[14]~"category14",
+                 test_targetbins==logrange[15]~"category15"
+)
+test_data$SalesRange <- test_range
+
+test_categorical <- test_categorical %>% 
+  mutate_if(is.factor, fct_explicit_na, na_level = 'None')
+
+test_categorical <- test_categorical %>% mutate(Lot_Shape = case_when(LotShape == "IR3" ~ 1,
+                                                      LotShape == "IR2" ~ 2,
+                                                      LotShape == "IR1" ~ 3,
+                                                      LotShape == "Reg" ~ 4)) %>%
+  select(-LotShape)
+
+test_categorical <- test_categorical %>% mutate(Land_Contour = case_when(LandContour == "Low" ~ 1,
+                                                         LandContour == "HLS" ~ 2,
+                                                         LandContour == "Bnk" ~ 3,
+                                                         LandContour == "Lvl" ~ 4)) %>%
+  select(-LandContour)
+
+test_categorical <- test_categorical %>% mutate(Utility = case_when(Utilities == "ELO" ~ 1,
+                                                    Utilities == "NoSeWa" ~ 2,
+                                                    Utilities == "NoSewr" ~ 3,
+                                                    Utilities == "AllPub" ~ 4)) %>%
+  select(-Utilities)
+
+test_categorical <- test_categorical %>% mutate(Land_Slope = case_when(LandSlope == "Sev" ~ 1,
+                                                       LandSlope == "Mod" ~ 2,
+                                                       LandSlope == "Gtl" ~ 3)) %>%
+  select(-LandSlope)
+
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Exter_Qual = case_when(
+      ExterQual == "Po" ~ 1,
+      ExterQual == "Fa" ~ 2,
+      ExterQual == "TA" ~ 3,
+      ExterQual == "Gd" ~ 4,
+      ExterQual == "Ex" ~ 5
+    )
+  ) %>%
+  select(-ExterQual)
+
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Exter_Cond = case_when(
+      ExterCond == "Po" ~ 1,
+      ExterCond == "Fa" ~ 2,
+      ExterCond == "TA" ~ 3,
+      ExterCond == "Gd" ~ 4,
+      ExterCond == "Ex" ~ 5
+    )
+  ) %>%
+  select(-ExterCond)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Bsmt_Qual = case_when(
+      BsmtQual == "None" ~ 0,
+      BsmtQual == "Po" ~ 1,
+      BsmtQual == "Fa" ~ 2,
+      BsmtQual == "TA" ~ 3,
+      BsmtQual == "Gd" ~ 4,
+      BsmtQual == "Ex" ~ 5
+    )
+  ) %>%
+  select(-BsmtQual)
+
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Bsmt_Cond = case_when(
+      BsmtCond == "None" ~ 0,
+      BsmtCond == "Po" ~ 1,
+      BsmtCond == "Fa" ~ 2,
+      BsmtCond == "TA" ~ 3,
+      BsmtCond == "Gd" ~ 4,
+      BsmtCond == "Ex" ~ 5
+    )
+  ) %>%
+  select(-BsmtCond)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Bsmt_Exposure = case_when(
+      BsmtExposure == "None" ~ 0,
+      BsmtExposure == "No" ~ 1,
+      BsmtExposure == "Mn" ~ 2,
+      BsmtExposure == "Av" ~ 3,
+      BsmtExposure == "Gd" ~ 4
+    )
+  ) %>%
+  select(-BsmtExposure)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Bsmt_FinType1 = case_when(
+      BsmtFinType1 == "None" ~ 0,
+      BsmtFinType1 == "Unf" ~ 1,
+      BsmtFinType1 == "LwQ" ~ 2,
+      BsmtFinType1 == "Rec" ~ 3,
+      BsmtFinType1 == "BLQ" ~ 4,
+      BsmtFinType1 == "ALQ" ~ 5,
+      BsmtFinType1 == "GLQ" ~ 6
+    )
+  ) %>%
+  select(-BsmtFinType1)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Bsmt_FinType2 = case_when(
+      BsmtFinType2 == "None" ~ 0,
+      BsmtFinType2 == "Unf" ~ 1,
+      BsmtFinType2 == "LwQ" ~ 2,
+      BsmtFinType2 == "Rec" ~ 3,
+      BsmtFinType2 == "BLQ" ~ 4,
+      BsmtFinType2 == "ALQ" ~ 5,
+      BsmtFinType2 == "GLQ" ~ 6
+    )
+  ) %>%
+  select(-BsmtFinType2)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Heating_QC = case_when(
+      HeatingQC == "None" ~ 0,
+      HeatingQC == "Po" ~ 1,
+      HeatingQC == "Fa" ~ 2,
+      HeatingQC == "TA" ~ 3,
+      HeatingQC == "Gd" ~ 4,
+      HeatingQC == "Ex" ~ 5
+    )
+  ) %>%
+  select(-HeatingQC)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Central_Air = case_when(
+      CentralAir == "N" ~ 0,
+      CentralAir == "Y" ~ 1
+    )
+  ) %>%
+  select(-CentralAir)
+
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Kitchen_Qual = case_when(
+      KitchenQual == "None" ~ 0,
+      KitchenQual == "Po" ~ 1,
+      KitchenQual == "Fa" ~ 2,
+      KitchenQual == "TA" ~ 3,
+      KitchenQual == "Gd" ~ 4,
+      KitchenQual == "Ex" ~ 5
+    )
+  ) %>%
+  select(-KitchenQual)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Func = case_when(
+      Functional == "Sal" ~ 0,
+      Functional == "Sev" ~ 1,
+      Functional == "Maj2" ~ 2,
+      Functional == "Maj1" ~ 3,
+      Functional == "Mod" ~ 4,
+      Functional == "Min2" ~ 5,
+      Functional == "Min1" ~ 6,
+      Functional == "Typ" ~ 7,
+    )
+  ) %>%
+  select(-Functional)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Fireplace_Qu = case_when(
+      FireplaceQu == "None" ~ 0,
+      FireplaceQu == "Po" ~ 1,
+      FireplaceQu == "Fa" ~ 2,
+      FireplaceQu == "TA" ~ 3,
+      FireplaceQu == "Gd" ~ 4,
+      FireplaceQu == "Ex" ~ 5
+    )
+  ) %>%
+  select(-FireplaceQu)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Garage_Finish = case_when(
+      GarageFinish == "None" ~ 0,
+      GarageFinish == "Unf" ~ 1,
+      GarageFinish == "RFn" ~ 2,
+      GarageFinish == "Fin" ~ 3)
+  ) %>%
+  select(-GarageFinish)
+
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Garage_Quality = case_when(
+      GarageQual == "None" ~ 0,
+      GarageQual == "Po" ~ 1,
+      GarageQual == "Fa" ~ 2,
+      GarageQual == "TA" ~ 3,
+      GarageQual == "Gd" ~ 4,
+      GarageQual == "Ex" ~ 5
+    )
+  ) %>%
+  select(-GarageQual)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Garage_Cond = case_when(
+      GarageCond == "None" ~ 0,
+      GarageCond == "Po" ~ 1,
+      GarageCond == "Fa" ~ 2,
+      GarageCond == "TA" ~ 3,
+      GarageCond == "Gd" ~ 4,
+      GarageCond == "Ex" ~ 5
+    )
+  ) %>%
+  select(-GarageCond)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Paved_Drive = case_when(
+      PavedDrive == "N" ~ 0,
+      PavedDrive == "P" ~ 1,
+      PavedDrive == "Y" ~ 2)
+  ) %>%
+  select(-PavedDrive)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Pool_Qual = case_when(
+      PoolQC == "None" ~ 0,
+      PoolQC == "Po" ~ 1,
+      PoolQC == "Fa" ~ 2,
+      PoolQC == "TA" ~ 3,
+      PoolQC == "Gd" ~ 4,
+      PoolQC == "Ex" ~ 5
+    )
+  ) %>%
+  select(-PoolQC)
+
+test_categorical <-
+  test_categorical %>% mutate(
+    Fence_ = case_when(
+      Fence == "None" ~ 0,
+      Fence == "MnWw" ~ 1,
+      Fence == "GdWo" ~ 2,
+      Fence == "MnPrv" ~ 3,
+      Fence == "GdPrv" ~ 4)
+  ) %>%
+  select(-Fence)
+
+zerovars_t<-(nearZeroVar(select_if(test_categorical, is.factor), freqCut=95/5, names=T))
+test_categorical <- test_categorical %>% select(-zerovars)
+
+test_encoded_cats <- as.data.frame(model.matrix(~.+0,data = select_if(test_categorical, is.factor)))
+
+test_class_df <- cbind(select_if(test_categorical, is.numeric), test_numerical, test_encoded_cats, test_data$SalesRange)
+test_class_df <- test_class_df %>% rename(SalesRange=`test_data$SalesRange`)
+test_class_df<-test_class_df%>%select(-SalePrice)
+# Introduce missing columns
+#test_class_df$NeighborhoodBlueste <- rep(0, 461)
+
+test1<-predict(svmfit, test_class_df)
+library(Metrics)
+accuracy(test_data$SalesRange, test1)
+set.seed(15)
+rf.test<-randomForest(SalesRange~., data=class_df)
+test2<-predict(rf.test, test_class_df)
+accuracy(test_data$SalesRange, test2)
+#####################
+setdiff(colnames(test_class_df), colnames(class_df))
+setdiff(colnames(class_df), colnames(test_class_df))
+colnames(test_class_df)==colnames(class_df)
+
+# Categoric columns that have different values from each other:
+# RoofStyle      # Can drop, don't think it will help much
+# Exterior1st    # Can drop, too many new values
+# Exterior2nd    # Maybe create a new variable with both exteriors
+# Electrical     # 
+# Neighborhood   # This is necessary, need to find a way to derive
+# Condition1     # May drop
+# SaleType       # 
+# SaleCondition
+# These have to be 
+
 # NOTLAR:
+# KALAN CATLAR İÇİN ONEHOT ENCODING?
 # Evin yaşı ve fiyatlandırması ile ilgili makaleler:
 # https://www.sciencedirect.com/science/article/pii/S1051137712000228
 # https://www.sciencedirect.com/science/article/pii/S0166046216301107
