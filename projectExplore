@@ -18,6 +18,8 @@ library(tidyr)
 train_data<-read.csv("Train_New_Data.csv", sep=";")
 test_data<-read.csv("Test_New_Data.csv", sep=";")
 
+# Drop categoric columns with non matching variables that will be one hot encoded
+train_data <- train_data %>% select(-c("RoofStyle", "Exterior1st", "Exterior2nd", "Electrical"))
 #Exploration on Numerical Variables
 num_values <- select_if(train_data, is.numeric)
 numericVarNames <- names(num_values)
@@ -95,38 +97,38 @@ num_values<-num_values %>%
 # Create total bath variable
 num_values$bath <- num_values$FullBath + (0.5 * num_values$HalfBath) + num_values$BsmtFullBath + (0.5 * num_values$BsmtHalfBath)
 
+# A couple scatterplots
+ggplot(num_values, aes(LotArea, SalePrice)) +
+  geom_point(color="blue")
+ggplot(num_values, aes(GrLivArea, SalePrice)) +
+  geom_point(color="blue")
+ggplot(num_values, aes(YearBuilt, SalePrice)) +
+  geom_point(color="blue")
+ggplot(num_values, aes(TotalBsmtSF, SalePrice)) +
+  geom_point(color="blue")
 # Drop 
 num_values <- select(num_values, -c(GarageCars, OverallQual, GarageYrBlt, HalfBath, BsmtFullBath, FullBath, BsmtHalfBath))
 num_values <- num_values %>% select(-Id)
+
 # Categorised sales variable
 summary(num_values$SalePrice)
-summary(log10(num_values$SalePrice)) #Scale based on log
-Salesrange<-log10(num_values$SalePrice)
-seq(min(Salesrange), max(Salesrange), length.out = 15)
-binneddata<-mutate(num_values, binned=Salesrange-Salesrange %% 0.095)$binned
+summary(log(num_values$SalePrice)) #Scale based on log
+Salesrange<-log(num_values$SalePrice)
+seq(min(Salesrange), max(Salesrange), length.out = 10)
+binneddata<-mutate(num_values, binned=Salesrange-Salesrange %% 0.34)$binned
 logrange<-sort(unique(binneddata))
 reals<-10^logrange
 # Range
 range<-case_when(binneddata==logrange[1]~"category1",
-                 binneddata==logrange[2]~"category2",
-                 binneddata==logrange[3]~"category3",
-                 binneddata==logrange[4]~"category4",
-                 binneddata==logrange[5]~"category5",
-                 binneddata==logrange[6]~"category6",
-                 binneddata==logrange[7]~"category7",
-                 binneddata==logrange[8]~"category8",
-                 binneddata==logrange[9]~"category9",
-                 binneddata==logrange[10]~"category10",
-                 binneddata==logrange[11]~"category11",
-                 binneddata==logrange[12]~"category12",
-                 binneddata==logrange[13]~"category13",
-                 binneddata==logrange[14]~"category14",
-                 binneddata==logrange[15]~"category15",
-                 #binneddata==logrange[16]~"category16",
-                 #binneddata==logrange[17]~"category17",
-                 #binneddata==logrange[18]~"category18",
-                 #binneddata==logrange[19]~"category19",
-                 #binneddata==logrange[20]~"category20"
+                 binneddata==logrange[2]~"category1",
+                 binneddata==logrange[3]~"category1",
+                 binneddata==logrange[4]~"category2",
+                 binneddata==logrange[5]~"category3",
+                 binneddata==logrange[6]~"category4",
+                 binneddata==logrange[7]~"category5",
+                 binneddata==logrange[8]~"category6",
+                 binneddata==logrange[9]~"category7",
+                 binneddata==logrange[10]~"category7"
                  )
 # Create 15 categories out of the salesprice range
 train_data$SalesRange <- range
@@ -396,27 +398,22 @@ cat_vars <-
 zerovars<-(nearZeroVar(select_if(cat_vars, is.factor), freqCut=95/5, names=T))
 cat_vars <- cat_vars %>% select(-zerovars)
 
+#Select ordinals
+ordinals<-select_if(cat_vars, is.numeric)
+
 # One-hot encode the rest
 encoded_cats <- as.data.frame(model.matrix(~.+0,data = select_if(cat_vars, is.factor)))
 
 # Combine for classification
-class_df <- cbind(select_if(cat_vars, is.numeric), num_values, encoded_cats,train_data$SalesRange)
+class_df <- cbind(ordinals, num_values, encoded_cats, train_data$SalesRange)
 class_df <- class_df %>% rename(SalesRange=`train_data$SalesRange`)
-colnames(class_df)
-# Introduce missing columns
-#
 
-# Do benchmark classification with svc
-library(e1071)
 class_df<-class_df%>%select(-SalePrice)
-svmfit<-svm(SalesRange~., data=class_df, kernel="linear", cost=0.1, scale=FALSE)
-svmfit$call
-
-# rf
-library(randomForest)
-rf.test<-randomForest(SalesRange~., data=class_df, ntree=25, mrty=10)
-
+####
 # PREP TEST DATAFRAME
+####
+# Drop categoric columns with non matching variables that will be one hot encoded
+test_data <- test_data %>% select(-c("RoofStyle", "Exterior1st", "Exterior2nd", "Electrical"))
 # Numerical columns
 test_numerical<-select_if(test_data, is.numeric)
 # Categorical columns
@@ -436,23 +433,18 @@ test_numerical$bath <- test_numerical$FullBath + (0.5 * test_numerical$HalfBath)
 test_numerical <- select(test_numerical, -c(GarageCars, OverallQual, GarageYrBlt, HalfBath, BsmtFullBath, FullBath, BsmtHalfBath))
 test_numerical <- test_numerical %>% select(-Id)
 
-log_testSales <- log10(test_numerical$SalePrice)
-test_targetbins <- mutate(test_numerical, binned=log_testSales-log_testSales %% 0.095)$binned
+log_testSales <- log(test_numerical$SalePrice)
+test_targetbins <- mutate(test_numerical, binned=log_testSales-log_testSales %% 0.34)$binned
 test_range<-case_when(test_targetbins==logrange[1]~"category1",
-                 test_targetbins==logrange[2]~"category2",
-                 test_targetbins==logrange[3]~"category3",
-                 test_targetbins==logrange[4]~"category4",
-                 test_targetbins==logrange[5]~"category5",
-                 test_targetbins==logrange[6]~"category6",
-                 test_targetbins==logrange[7]~"category7",
-                 test_targetbins==logrange[8]~"category8",
-                 test_targetbins==logrange[9]~"category9",
-                 test_targetbins==logrange[10]~"category10",
-                 test_targetbins==logrange[11]~"category11",
-                 test_targetbins==logrange[12]~"category12",
-                 test_targetbins==logrange[13]~"category13",
-                 test_targetbins==logrange[14]~"category14",
-                 test_targetbins==logrange[15]~"category15"
+                      test_targetbins==logrange[2]~"category1",
+                      test_targetbins==logrange[3]~"category1",
+                      test_targetbins==logrange[4]~"category2",
+                      test_targetbins==logrange[5]~"category3",
+                      test_targetbins==logrange[6]~"category4",
+                      test_targetbins==logrange[7]~"category5",
+                      test_targetbins==logrange[8]~"category6",
+                      test_targetbins==logrange[9]~"category7",
+                      test_targetbins==logrange[10]~"category7"
 )
 test_data$SalesRange <- test_range
 
@@ -712,40 +704,58 @@ test_categorical <-
 zerovars_t<-(nearZeroVar(select_if(test_categorical, is.factor), freqCut=95/5, names=T))
 test_categorical <- test_categorical %>% select(-zerovars)
 
+test_ordinals <- select_if(test_categorical, is.numeric)
 test_encoded_cats <- as.data.frame(model.matrix(~.+0,data = select_if(test_categorical, is.factor)))
 
-test_class_df <- cbind(select_if(test_categorical, is.numeric), test_numerical, test_encoded_cats, test_data$SalesRange)
+test_class_df <- cbind(test_ordinals, test_numerical, test_encoded_cats, test_data$SalesRange)
 test_class_df <- test_class_df %>% rename(SalesRange=`test_data$SalesRange`)
 test_class_df<-test_class_df%>%select(-SalePrice)
 # Introduce missing columns
-#test_class_df$NeighborhoodBlueste <- rep(0, 461)
-
-test1<-predict(svmfit, test_class_df)
+test_class_df$NeighborhoodBlueste <- rep(0, 461)
+test_class_df$Condition1RRNe <- rep(0, 461)
+test_class_df$SaleTypeCon <- rep(0, 461)
+test_class_df$SaleTypeConLI <- rep(0, 461)
+test_class_df$SaleConditionAdjLand <- rep(0, 461)
+# fix colname
+class_df <- class_df %>% rename(MSZoningC =`MSZoningC (all)`)
+test_class_df <- test_class_df %>% rename(MSZoningC =`MSZoningC (all)`)
+# Do benchmark classification with svc
+library(e1071)
+library(randomForest)
 library(Metrics)
+set.seed(15)
+svmfit<-svm(SalesRange~., data=class_df, kernel="polynomial", cost=0.1, scale=FALSE)
+test1<-predict(svmfit, test_class_df)
 accuracy(test_data$SalesRange, test1)
 set.seed(15)
-rf.test<-randomForest(SalesRange~., data=class_df)
+rf.test<-randomForest(SalesRange~., data=class_df, ntrees=100)
+train2<-predict(rf.test, class_df)
 test2<-predict(rf.test, test_class_df)
 accuracy(test_data$SalesRange, test2)
+accuracy(train_data$SalesRange, train2)
 #####################
 setdiff(colnames(test_class_df), colnames(class_df))
 setdiff(colnames(class_df), colnames(test_class_df))
-colnames(test_class_df)==colnames(class_df)
+
+# regression
+rf.reg<-randomForest(SalePrice~.-SalesRange, data=class_df)
+
+trainreg<-predict(rf.reg, class_df)
+testreg<-predict(rf.reg, test_class_df)
+rmse(train_data$SalePrice, trainreg)
+rmse(test_data$SalePrice, testreg)
 
 # Categoric columns that have different values from each other:
 # RoofStyle      # Can drop, don't think it will help much
 # Exterior1st    # Can drop, too many new values
 # Exterior2nd    # Maybe create a new variable with both exteriors
-# Electrical     # 
+# Electrical     # Can Drop
 # Neighborhood   # This is necessary, need to find a way to derive
 # Condition1     # May drop
 # SaleType       # 
-# SaleCondition
-# These have to be 
+# SaleCondition  #
 
-# NOTLAR:
-# KALAN CATLAR İÇİN ONEHOT ENCODING?
-# Evin yaşı ve fiyatlandırması ile ilgili makaleler:
+
 # https://www.sciencedirect.com/science/article/pii/S1051137712000228
 # https://www.sciencedirect.com/science/article/pii/S0166046216301107
 # https://www.apartmenttherapy.com/what-is-considered-an-older-home-247609
