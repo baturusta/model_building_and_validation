@@ -1,5 +1,6 @@
 # Load project data and libraries
 setwd("C:/Users/08892/Desktop/Model Building and Validation/Project")
+# Load project data and libraries
 library(readxl)
 library(tidyverse)
 library(forcats)
@@ -50,6 +51,7 @@ for(test in tests){
 # https://cran.r-project.org/web/packages/missForest/missForest.pdf
 library(missForest)
 num_values <- missForest(num_values, maxiter=10, ntree=200)$ximp
+
 # The few nulls among the numerical values are replaced with missForest package, we can proceed to EDA
 # Detailed summary
 options(scipen=999)
@@ -63,7 +65,7 @@ num_describe<-mvn(num_values)$Descriptives
 # Correlation plot
 cor <- cor(num_values,use="pairwise.complete.obs")
 cor_sorted <- as.matrix(sort(cor[,'SalePrice'], decreasing = TRUE))
-CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.30)))
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.3)))
 cor <- cor[CorHigh, CorHigh]
 windows()
 corrplot.mixed(cor, tl.col="black", tl.pos = "lt")
@@ -83,9 +85,9 @@ hist(num_values$YrSold-num_values$YearRemodAdd)
 num_values<-num_values %>%
   mutate(renovation = ifelse(YearBuilt!=YearRemodAdd, (YrSold-YearRemodAdd), -1)) %>%
   mutate(renovation = case_when(renovation==-1~0,
-                                             renovation<10~3,
-                                             renovation<=40~2,
-                                             renovation>40~1)) %>%
+                                renovation<10~3,
+                                renovation<=40~2,
+                                renovation>40~1)) %>%
   select(-YearRemodAdd)
 
 # Renovation:
@@ -106,35 +108,62 @@ ggplot(num_values, aes(YearBuilt, SalePrice)) +
   geom_point(color="blue")
 ggplot(num_values, aes(TotalBsmtSF, SalePrice)) +
   geom_point(color="blue")
+
+ggplot(num_values, aes(X3SsnPorch, SalePrice)) +
+  geom_point(color="blue")
+
+ggplot(num_values, aes(PoolArea, SalePrice)) +
+  geom_point(color="blue")
 # Drop 
 num_values <- select(num_values, -c(GarageCars, OverallQual, GarageYrBlt, HalfBath, BsmtFullBath, FullBath, BsmtHalfBath))
 num_values <- num_values %>% select(-Id)
 
 # Categorised sales variable
 summary(num_values$SalePrice)
-summary(log(num_values$SalePrice)) #Scale based on log
-Salesrange<-log(num_values$SalePrice)
-seq(min(Salesrange), max(Salesrange), length.out = 10)
-binneddata<-mutate(num_values, binned=Salesrange-Salesrange %% 0.34)$binned
-logrange<-sort(unique(binneddata))
-reals<-10^logrange
-# Range
-range<-case_when(binneddata==logrange[1]~"category1",
-                 binneddata==logrange[2]~"category1",
-                 binneddata==logrange[3]~"category1",
-                 binneddata==logrange[4]~"category2",
-                 binneddata==logrange[5]~"category3",
-                 binneddata==logrange[6]~"category4",
-                 binneddata==logrange[7]~"category5",
-                 binneddata==logrange[8]~"category6",
-                 binneddata==logrange[9]~"category7",
-                 binneddata==logrange[10]~"category7"
-                 )
-# Create 15 categories out of the salesprice range
-train_data$SalesRange <- range
-train_data %>% select(SalesRange) %>% group_by(SalesRange) %>% summarize(n()) %>%
-  ggplot(.) +
-  geom_bar(aes(y=`n()`, x=SalesRange), stat='identity')
+
+# Merge square foot variables. Lot area is overall area that building resides on, masonry veneer is something like a wall so i did not add them to here
+
+num_values <-
+  num_values %>% mutate(totalsf = GarageArea + WoodDeckSF + OpenPorchSF + EnclosedPorch + X3SsnPorch +
+                          ScreenPorch + PoolArea) %>% select(-c(GarageArea,WoodDeckSF,OpenPorchSF,EnclosedPorch,X3SsnPorch,
+                                                                ScreenPorch,PoolArea))
+
+# TotalBsmtSf is sum of BsmtFinSf1,BsmtFinSf2 and BsmtUnfSf. Drop these three and keep only one variable here.
+num_values <- num_values %>% select(-c(BsmtFinSF1,BsmtFinSF2,BsmtUnfSF))
+
+# - Another high correlation is found between total basement area (TotalBsmtSF) and first floor area (X1stFlrSF)
+# It looks like first floor area is covering all total basement area plus some other variable. Dropping total basement area.
+#num_values <- num_values %>% select(-c(TotalBsmtSF))
+
+# Solve skewness issue by log transforming or dropping variables with skewness over 1. 
+# Miscval, lowqualfinsf droppped no correlation with saleprice. Also log transform turns them into negative infinity!
+
+num_values <- num_values %>% mutate(LotArea = log(LotArea)) %>% select(-c(MiscVal,LowQualFinSF))
+
+
+# summary(log(num_values$SalePrice)) #Scale based on log
+# Salesrange<-log(num_values$SalePrice)
+# seq(min(Salesrange), max(Salesrange), length.out = 10)
+# binneddata<-mutate(num_values, binned=Salesrange-Salesrange %% 0.34)$binned
+# logrange<-sort(unique(binneddata))
+# reals<-10^logrange
+# # Range
+# range<-case_when(binneddata==logrange[1]~"category1",
+#                  binneddata==logrange[2]~"category1",
+#                  binneddata==logrange[3]~"category1",
+#                  binneddata==logrange[4]~"category2",
+#                  binneddata==logrange[5]~"category3",
+#                  binneddata==logrange[6]~"category4",
+#                  binneddata==logrange[7]~"category5",
+#                  binneddata==logrange[8]~"category6",
+#                  binneddata==logrange[9]~"category7",
+#                  binneddata==logrange[10]~"category7"
+# )
+# # Create 15 categories out of the salesprice range
+# train_data$SalesRange <- range
+# train_data %>% select(SalesRange) %>% group_by(SalesRange) %>% summarize(n()) %>%
+#   ggplot(.) +
+#   geom_bar(aes(y=`n()`, x=SalesRange), stat='identity')
 # Explore categorical variables
 cat_vars <- select_if(train_data, is.factor)
 
@@ -145,26 +174,26 @@ cat_vars <- cat_vars %>%
   mutate_if(is.factor, fct_explicit_na, na_level = 'None')
 
 cat_vars <- cat_vars %>% mutate(Lot_Shape = case_when(LotShape == "IR3" ~ 1,
-                                                LotShape == "IR2" ~ 2,
-                                                LotShape == "IR1" ~ 3,
-                                                LotShape == "Reg" ~ 4)) %>%
-                                  select(-LotShape)
+                                                      LotShape == "IR2" ~ 2,
+                                                      LotShape == "IR1" ~ 3,
+                                                      LotShape == "Reg" ~ 4)) %>%
+  select(-LotShape)
 
 cat_vars <- cat_vars %>% mutate(Land_Contour = case_when(LandContour == "Low" ~ 1,
-                                                   LandContour == "HLS" ~ 2,
-                                                   LandContour == "Bnk" ~ 3,
-                                                   LandContour == "Lvl" ~ 4)) %>%
+                                                         LandContour == "HLS" ~ 2,
+                                                         LandContour == "Bnk" ~ 3,
+                                                         LandContour == "Lvl" ~ 4)) %>%
   select(-LandContour)
 
 cat_vars <- cat_vars %>% mutate(Utility = case_when(Utilities == "ELO" ~ 1,
-                                              Utilities == "NoSeWa" ~ 2,
-                                              Utilities == "NoSewr" ~ 3,
-                                              Utilities == "AllPub" ~ 4)) %>%
+                                                    Utilities == "NoSeWa" ~ 2,
+                                                    Utilities == "NoSewr" ~ 3,
+                                                    Utilities == "AllPub" ~ 4)) %>%
   select(-Utilities)
 
 cat_vars <- cat_vars %>% mutate(Land_Slope = case_when(LandSlope == "Sev" ~ 1,
-                                                 LandSlope == "Mod" ~ 2,
-                                                 LandSlope == "Gtl" ~ 3)) %>%
+                                                       LandSlope == "Mod" ~ 2,
+                                                       LandSlope == "Gtl" ~ 3)) %>%
   select(-LandSlope)
 
 
@@ -394,9 +423,15 @@ cat_vars <-
   ) %>%
   select(-Fence)
 
+
 # Remove near zero variance categorics
 zerovars<-(nearZeroVar(select_if(cat_vars, is.factor), freqCut=95/5, names=T))
 cat_vars <- cat_vars %>% select(-zerovars)
+
+# # Same for ordinals.
+# zerovars<-(nearZeroVar(select_if(cat_vars, is.numeric), freqCut=95/5, names=T))
+# cat_vars <- cat_vars %>% select(-zerovars)
+
 
 #Select ordinals
 ordinals<-select_if(cat_vars, is.numeric)
@@ -404,8 +439,15 @@ ordinals<-select_if(cat_vars, is.numeric)
 # One-hot encode the rest
 encoded_cats <- as.data.frame(model.matrix(~.+0,data = select_if(cat_vars, is.factor)))
 
+# # Drop also one hot encoded ones
+# zerovars<-(nearZeroVar(encoded_cats, freqCut=95/5, names=T))
+# encoded_cats <- encoded_cats %>% select(-zerovars)
+
 # Combine for classification
 class_df <- cbind(ordinals, num_values, encoded_cats, train_data$SalesRange)
+
+class_df <- cbind(ordinals, num_values, encoded_cats, train_data$SalePrice)
+
 class_df <- class_df %>% rename(SalesRange=`train_data$SalesRange`)
 
 class_df<-class_df%>%select(-SalePrice)
@@ -433,45 +475,66 @@ test_numerical$bath <- test_numerical$FullBath + (0.5 * test_numerical$HalfBath)
 test_numerical <- select(test_numerical, -c(GarageCars, OverallQual, GarageYrBlt, HalfBath, BsmtFullBath, FullBath, BsmtHalfBath))
 test_numerical <- test_numerical %>% select(-Id)
 
-log_testSales <- log(test_numerical$SalePrice)
-test_targetbins <- mutate(test_numerical, binned=log_testSales-log_testSales %% 0.34)$binned
-test_range<-case_when(test_targetbins==logrange[1]~"category1",
-                      test_targetbins==logrange[2]~"category1",
-                      test_targetbins==logrange[3]~"category1",
-                      test_targetbins==logrange[4]~"category2",
-                      test_targetbins==logrange[5]~"category3",
-                      test_targetbins==logrange[6]~"category4",
-                      test_targetbins==logrange[7]~"category5",
-                      test_targetbins==logrange[8]~"category6",
-                      test_targetbins==logrange[9]~"category7",
-                      test_targetbins==logrange[10]~"category7"
-)
-test_data$SalesRange <- test_range
+## Efehan's update
+# Merge square foot variables. Lot area is overall area that building resides on, masonry veneer is something like a wall so i did not add them to here
+
+test_numerical <-
+  test_numerical %>% mutate(totalsf = GarageArea + WoodDeckSF + OpenPorchSF + EnclosedPorch + X3SsnPorch +
+                              ScreenPorch + PoolArea) %>% select(-c(GarageArea,WoodDeckSF,OpenPorchSF,EnclosedPorch,X3SsnPorch,
+                                                                    ScreenPorch,PoolArea))
+
+# TotalBsmtSf is sum of BsmtFinSf1,BsmtFinSf2 and BsmtUnfSf. Drop these three and keep only one variable here.
+test_numerical <- test_numerical %>% select(-c(BsmtFinSF1,BsmtFinSF2,BsmtUnfSF))
+
+# - Another high correlation is found between total basement area (TotalBsmtSF) and first floor area (X1stFlrSF)
+# It looks like first floor area is covering all total basement area plus some other variable. Dropping total basement area.
+#test_numerical <- test_numerical %>% select(-c(TotalBsmtSF))
+
+# Solve skewness issue by log transforming or dropping variables with skewness over 1. 
+# Miscval, lowqualfinsf droppped no correlation with saleprice. Also log transform turns them into negative infinity!
+
+test_numerical <- test_numerical %>% mutate(LotArea = log(LotArea)) %>% select(-c(MiscVal,LowQualFinSF))
+
+
+# log_testSales <- log(test_numerical$SalePrice)
+# test_targetbins <- mutate(test_numerical, binned=log_testSales-log_testSales %% 0.34)$binned
+# test_range<-case_when(test_targetbins==logrange[1]~"category1",
+#                       test_targetbins==logrange[2]~"category1",
+#                       test_targetbins==logrange[3]~"category1",
+#                       test_targetbins==logrange[4]~"category2",
+#                       test_targetbins==logrange[5]~"category3",
+#                       test_targetbins==logrange[6]~"category4",
+#                       test_targetbins==logrange[7]~"category5",
+#                       test_targetbins==logrange[8]~"category6",
+#                       test_targetbins==logrange[9]~"category7",
+#                       test_targetbins==logrange[10]~"category7"
+# )
+# test_data$SalesRange <- test_range
 
 test_categorical <- test_categorical %>% 
   mutate_if(is.factor, fct_explicit_na, na_level = 'None')
 
 test_categorical <- test_categorical %>% mutate(Lot_Shape = case_when(LotShape == "IR3" ~ 1,
-                                                      LotShape == "IR2" ~ 2,
-                                                      LotShape == "IR1" ~ 3,
-                                                      LotShape == "Reg" ~ 4)) %>%
+                                                                      LotShape == "IR2" ~ 2,
+                                                                      LotShape == "IR1" ~ 3,
+                                                                      LotShape == "Reg" ~ 4)) %>%
   select(-LotShape)
 
 test_categorical <- test_categorical %>% mutate(Land_Contour = case_when(LandContour == "Low" ~ 1,
-                                                         LandContour == "HLS" ~ 2,
-                                                         LandContour == "Bnk" ~ 3,
-                                                         LandContour == "Lvl" ~ 4)) %>%
+                                                                         LandContour == "HLS" ~ 2,
+                                                                         LandContour == "Bnk" ~ 3,
+                                                                         LandContour == "Lvl" ~ 4)) %>%
   select(-LandContour)
 
 test_categorical <- test_categorical %>% mutate(Utility = case_when(Utilities == "ELO" ~ 1,
-                                                    Utilities == "NoSeWa" ~ 2,
-                                                    Utilities == "NoSewr" ~ 3,
-                                                    Utilities == "AllPub" ~ 4)) %>%
+                                                                    Utilities == "NoSeWa" ~ 2,
+                                                                    Utilities == "NoSewr" ~ 3,
+                                                                    Utilities == "AllPub" ~ 4)) %>%
   select(-Utilities)
 
 test_categorical <- test_categorical %>% mutate(Land_Slope = case_when(LandSlope == "Sev" ~ 1,
-                                                       LandSlope == "Mod" ~ 2,
-                                                       LandSlope == "Gtl" ~ 3)) %>%
+                                                                       LandSlope == "Mod" ~ 2,
+                                                                       LandSlope == "Gtl" ~ 3)) %>%
   select(-LandSlope)
 
 
@@ -702,23 +765,129 @@ test_categorical <-
   select(-Fence)
 
 zerovars_t<-(nearZeroVar(select_if(test_categorical, is.factor), freqCut=95/5, names=T))
-test_categorical <- test_categorical %>% select(-zerovars)
+test_categorical <- test_categorical %>% select(-zerovars_t)
 
 test_ordinals <- select_if(test_categorical, is.numeric)
 test_encoded_cats <- as.data.frame(model.matrix(~.+0,data = select_if(test_categorical, is.factor)))
 
+# # Same for ordinals.
+# zerovars<-(nearZeroVar(test_ordinals, freqCut=95/5, names=T))
+# test_ordinals <- test_ordinals %>% select(-zerovars)
+
+
+# One-hot encode the rest
+encoded_cats <- as.data.frame(model.matrix(~.+0,data = select_if(test_categorical, is.factor)))
+
+# # Drop also one hot encoded ones
+# zerovars<-(nearZeroVar(encoded_cats, freqCut=95/5, names=T))
+# test_encoded_cats <- encoded_cats %>% select(-zerovars)
+
+test_class_df <- cbind(test_ordinals, test_numerical, test_encoded_cats, test_data$SalePrice)
+
 test_class_df <- cbind(test_ordinals, test_numerical, test_encoded_cats, test_data$SalesRange)
 test_class_df <- test_class_df %>% rename(SalesRange=`test_data$SalesRange`)
 test_class_df<-test_class_df%>%select(-SalePrice)
+
 # Introduce missing columns
 test_class_df$NeighborhoodBlueste <- rep(0, 461)
 test_class_df$Condition1RRNe <- rep(0, 461)
 test_class_df$SaleTypeCon <- rep(0, 461)
 test_class_df$SaleTypeConLI <- rep(0, 461)
 test_class_df$SaleConditionAdjLand <- rep(0, 461)
-# fix colname
+# fix colnam
+
 class_df <- class_df %>% rename(MSZoningC =`MSZoningC (all)`)
 test_class_df <- test_class_df %>% rename(MSZoningC =`MSZoningC (all)`)
+
+### Drop non-existing columns in one of the frames. 
+
+setdiff(class_df,test_class_df)
+#class_df <- class_df %>% select(-c(SaleTypeCon,SaleConditionAdjLand,NeighborhoodBlueste,SaleTypeConLI,Condition1RRNe))
+
+
+class_df$SalePrice <- class_df$`train_data$SalePrice`
+test_class_df$SalePrice <- test_class_df$`test_data$SalePrice`
+class_df <- class_df %>% select(-`train_data$SalePrice`)
+test_class_df <- test_class_df %>% select(-'test_data$SalePrice')
+### Remove outliers. R-squared'i arttırıyor ama biraz overfit ettiriyor.
+mod <- lm(SalePrice ~ ., data=class_df)
+car::outlierTest(mod)
+
+class_df <- class_df[-c(524,692,899,804,441,186),]
+
+
+
+
+#################################3
+rf_sale=randomForest(SalePrice~.,data=class_df,
+                     importance=TRUE, mtry=15,drop.unused.levels=TRUE)
+
+yhat.rf = predict(rf_sale, newdata=test_class_df)
+yhat.rf.tr = predict(rf_sale, newdata=class_df)
+
+log(sqrt(mean((yhat.rf-test_class_df$SalePrice)^2)))
+
+log(sqrt(mean((yhat.rf.tr-class_df$SalePrice)^2)))
+#################################
+
+set.seed(123)
+hyper_grid <- expand.grid(
+  n.trees = c(500,1000), shrinkage=c(0.01,0.1),interaction.depth = seq(1,10),n.minobsinnode=c(5,10,20))
+metric <- "RMSE"
+trainControl <- trainControl(method="cv", number=10)
+
+gbm.caret <- train(SalePrice ~ ., data=class_df, distribution="gaussian", method="gbm",
+                   trControl=trainControl, verbose=FALSE, 
+                   tuneGrid=hyper_grid, metric=metric, bag.fraction=0.75)      
+
+result <- gbm.caret$results
+#28733.
+arrange(result,RMSE)
+log(28733)
+
+hyper_grid <- expand.grid(
+  n.trees = c(1000), shrinkage=c(0.01),interaction.depth = c(9),n.minobsinnode=c(20))
+gbm.caret <- train(SalePrice ~ ., data=class_df, distribution="gaussian", method="gbm",
+                   trControl=trainControl, verbose=FALSE, 
+                   tuneGrid=hyper_grid, metric=metric, bag.fraction=0.75)
+pred <- predict(gbm.caret, newdata = test_class_df)
+predtr <- predict(gbm.caret, newdata = class_df)
+
+sqrt(mean((log(predtr) - log(class_df$SalePrice)) ^ 2))
+sqrt(mean((log(pred) - log(test_class_df$SalePrice)) ^ 2))
+
+#### Randomforest
+hyper_grid <- expand.grid(
+  mtry = c(5,10)# number of trees
+)
+
+rf <- train(log(SalePrice) ~ ., data=class_df, distribution="gaussian", method="rf",
+                   trControl=trainControl, verbose=FALSE, 
+                   tuneGrid=hyper_grid, metric=metric)      
+
+pred <- predict(rf, newdata = test_class_df)
+predtr <- predict(rf, newdata = class_df)
+
+sqrt(mean((predtr - log(class_df$SalePrice)) ^ 2))
+sqrt(mean((pred - log(test_class_df$SalePrice)) ^ 2))
+
+
+
+## Ridge
+
+grid=10^seq(10,-2,length=100)
+x <- as.matrix(features) # Remov)es class
+y <- as.double(as.matrix(target)) # Only class
+y_test <- as.matrix(select(test_class_df,-c(SalePrice)))
+
+ridge_mod = cv.glmnet(x, y, alpha = 0, lambda = grid,nfolds=10)
+lambda_cv <- ridge_mod$lambda.min
+model_cv <- glmnet(x, y, alpha = 0, lambda = lambda_cv, standardize = TRUE)
+
+ridge_pred = predict(model_cv,y_test)
+
+sqrt(mean((ridge_pred - test_class_df$SalePrice)^2))
+
 # Do benchmark classification with svc
 library(e1071)
 library(randomForest)
